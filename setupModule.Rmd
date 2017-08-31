@@ -1,0 +1,132 @@
+---
+title: "OTU Module Setup"
+author: "Brian S. Yandell"
+date: "5/12/2017"
+params:
+  chr_id: '17'
+  peak_Mbp: 46
+  pheno_name: fat_pad_weight
+  window_Mbp: 2
+  datapath: "~/Documents/Research/attie_alan/DO/data/DerivedData"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+suppressPackageStartupMessages({
+  library(qtl2geno)
+  library(qtl2scan)
+  library(qtl2ggplot)
+  library(qtl2pattern)
+  library(qtl2feather)
+  library(dplyr)
+  library(ggplot2)
+  library(stringr)
+  library(readr)
+})
+```
+
+```{r}
+pheno_name <- unlist(stringr::str_split(params$pheno_name, ",")[[1]])
+chr_id  <- as.character(params$chr_id)
+peak_Mbp <- as.numeric(params$peak_Mbp)
+window_Mbp <- as.numeric(params$window_Mbp)
+datapath <- as.character(params$datapath)
+```
+
+```{r}
+covar <- readRDS(file.path(datapath, "covar.rds"))
+```
+
+```{r}
+peaks <- readRDS(file.path(datapath, "peaks.rds"))
+peak_info <- (
+  dplyr::ungroup(
+    dplyr::summarize(
+      dplyr::arrange(
+        dplyr::distinct(
+          dplyr::group_by(peaks, pheno), 
+          output), 
+        dplyr::desc(output)), 
+      output = output[1])
+    )
+  )$output
+peaks <- dplyr::filter(peaks, output %in% peak_info)
+```
+
+```{r}
+analyses_tbl <- dplyr::filter(readRDS(file.path(datapath, "analyses.rds")), 
+                              output %in% peak_info)
+```
+
+Use transformations and covariates used before for OTUs.
+
+```{r}
+(analyses_otu <- analyses_tbl %>%
+  filter(pheno_group == "otu") %>%
+  filter(row_number(sex) == 1) %>%
+  mutate(pheno_group = "OTU_Module") %>%
+  select(-pheno,-output,-longname,-pheno_type))
+```
+
+## Modules
+
+```{r}
+peaks_module <- read_tsv(file.path(datapath, "otu", 
+                               "20170711peaks_nqr.tsv")) %>%
+  mutate(chr = factor(chr, c(1:19,"X"))) %>%
+  select(-lodindex) %>%
+  rename(pheno = lodcolumn) %>%
+  mutate(output = pheno,
+         longname = pheno,
+         pheno_group = "OTU_Module",
+         pheno_type = "OTU_Module")
+```
+
+How many modules have `n` peaks?
+
+```{r}
+peaks_module %>%
+  count(pheno) %>%
+  count(n)
+```
+
+```{r}
+table(peaks_module$chr)
+```
+
+## Annotation
+
+```{r}
+(annot <- peaks_module %>%
+  distinct(pheno, pheno_group, pheno_type) %>%
+  mutate(longname = pheno,
+         output = pheno))
+```
+
+```{r}
+module <- readRDS(file.path(datapath, "otu",
+                         "phe_sparccSCnorm_MEs.RDS"))
+```
+
+```{r}
+saveRDS(peaks_module, 
+        file = file.path(datapath, "otu", "peaks_OTU_Module.rds"))
+```
+
+```{r}
+saveRDS(module, file = file.path(datapath, "otu", "pheno_OTU_Module.rds"))
+```
+
+```{r}
+analyses_otu <- inner_join(annot, analyses_otu, by = "pheno_group")
+```
+
+```{r}
+saveRDS(analyses_otu, file = file.path(datapath, "otu", "analyses_OTU_Module.rds"))
+```
+

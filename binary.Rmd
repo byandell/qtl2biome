@@ -1,0 +1,141 @@
+---
+title: "Binary"
+author: "Brian S. Yandell"
+date: "5/15/2017"
+params:
+  datapath: "~/Documents/Research/attie_alan/DO/data/DerivedData"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Goal: Fit binary OTU data (0 vs >0). 
+Challenge: R/qtl2 has partially implemented this. There is a `model` option for "normal" or "binary", but the "binary" only works if `kinship` is `NULL`. Here we look at it both ways: 
+
+- analyze as binary without `kinship`
+- analyze as normal with `kinship`
+
+Bottom line: not there yet.
+
+## Setup
+
+
+```{r}
+suppressPackageStartupMessages({
+  library(qtl2geno)
+  library(qtl2scan)
+  library(qtl2ggplot)
+  library(qtl2pattern)
+  library(qtl2feather)
+  library(dplyr)
+  library(ggplot2)
+  library(stringr)
+  library(readr)
+})
+```
+
+```{r}
+datapath <- as.character(params$datapath)
+```
+
+```{r}
+finegrain <- function(Order,Family,Genus,Species) {
+  ifelse(is.na(Species),
+         ifelse(is.na(Genus),
+                ifelse(is.na(Family),
+                       Order,
+                       ifelse(str_detect(Family, "[0-9]"),
+                              paste(Order, Family),
+                              Family)),
+                ifelse(str_detect(Genus, "[0-9]"),
+                       paste(Family, Genus),
+                       Genus)),
+         paste(Genus, Species))
+}
+```
+
+```{r}
+peaks_zero <- read_tsv(file.path(datapath, "otu", 
+                               "20170501_peaks_cr97_w0_ra_wTaxonomy.tsv")) %>%
+  mutate(chr = factor(chr, c(1:19,"X"))) %>%
+  select(-lodindex) %>%
+  rename(pheno = lodcolumn) %>%
+  mutate(longname = paste0(pheno, " (", finegrain(Order,Family,Genus,Species), ")"),
+         pheno = paste0("z", pheno),
+         output = pheno,
+         pheno_group = "OTU_Closed_Ref",
+         pheno_type = "OTU_Zero")
+```
+
+```{r}
+peaks_zero %>%
+  count(pheno) %>%
+  count(n)
+```
+
+```{r}
+peaks_zero %>%
+  select(Phylum:Species) %>%
+  group_by(Phylum) %>%
+  summarize_all(n_distinct)
+```
+
+```{r}
+peaks_zero %>%
+  count(Order,Family,Genus,Species)
+```
+
+```{r}
+peaks_zero %>%
+  select(Phylum:Species) %>%
+  group_by(Phylum) %>%
+  summarize_all(funs(sum(is.na(.))))
+```
+
+```{r}
+table(peaks_zero$chr)
+```
+
+## (Re)analysis of normal approach
+
+```{r}
+covar <- readRDS(file.path(datapath, "covar.rds"))
+covar <- covar[, c("sex", paste0("DOwave", 2:4))]
+```
+
+```{r}
+botu <- readRDS(file.path(datapath, "otu",
+                         "phe_otu_cr97_filter1010.rds"))
+colnames(botu) <- paste0("b", colnames(botu))
+botu[botu > 0] <- 1
+ncol(botu)
+```
+
+```{r}
+aprobs <- DOread::read_probs(datapath = file.path(datapath))
+```
+
+```{r}
+kinship <- readRDS(file.path(datapath, "kinship.rds"))
+```
+
+```{r}
+scans <- scan1(aprobs$probs, botu[,1:50], kinship, addcovar = covar,
+               model = "normal")
+```
+
+```{r}
+saveRDS(scans, file = "botu_normal_1_50.rds")
+```
+
+```{r}
+scans <- scan1(aprobs$probs, botu[,1:50], NULL, addcovar = covar,
+               model = "binary")
+```
+
+```{r}
+saveRDS(scans, file = "botu_binary_1_50.rds")
+```
+

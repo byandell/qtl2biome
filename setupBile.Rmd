@@ -1,0 +1,132 @@
+---
+title: "Bile Acid Setup"
+author: "Brian S. Yandell"
+date: "5/12/2017"
+params:
+  chr_id: '17'
+  peak_Mbp: 46
+  pheno_name: fat_pad_weight
+  window_Mbp: 2
+  datapath: "~/Documents/Research/attie_alan/DO/data/DerivedData"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+suppressPackageStartupMessages({
+  library(qtl2geno)
+  library(qtl2scan)
+  library(qtl2ggplot)
+  library(qtl2pattern)
+  library(qtl2feather)
+  library(dplyr)
+  library(ggplot2)
+  library(stringr)
+  library(readr)
+})
+```
+
+```{r}
+pheno_name <- unlist(stringr::str_split(params$pheno_name, ",")[[1]])
+chr_id  <- as.character(params$chr_id)
+peak_Mbp <- as.numeric(params$peak_Mbp)
+window_Mbp <- as.numeric(params$window_Mbp)
+datapath <- as.character(params$datapath)
+```
+
+```{r}
+covar <- readRDS(file.path(datapath, "covar.rds"))
+```
+
+```{r}
+peaks <- readRDS(file.path(datapath, "peaks.rds"))
+peak_info <- (
+  dplyr::ungroup(
+    dplyr::summarize(
+      dplyr::arrange(
+        dplyr::distinct(
+          dplyr::group_by(peaks, pheno), 
+          output), 
+        dplyr::desc(output)), 
+      output = output[1])
+    )
+  )$output
+peaks <- dplyr::filter(peaks, output %in% peak_info)
+```
+
+```{r}
+analyses_tbl <- dplyr::filter(readRDS(file.path(datapath, "analyses.rds")), 
+                              output %in% peak_info)
+```
+
+Use transformations and covariates used before for OTUs.
+
+```{r}
+(analyses_otu <- analyses_tbl %>%
+  filter(pheno_group == "otu") %>%
+  filter(row_number(sex) == 1) %>%
+  mutate(pheno_group = "BileAcid") %>%
+  select(-pheno,-output,-longname,-pheno_type))
+```
+
+## Bile Acids
+
+```{r}
+peaks_bile <- read_tsv(file.path(datapath, "otu", 
+                               "20170530peaks.cr97_logBA copy.tsv")) %>%
+  mutate(chr = factor(chr, c(1:19,"X"))) %>%
+  select(-lodindex) %>%
+  rename(pheno = lodcolumn) %>%
+  mutate(output = pheno,
+         longname = pheno,
+         pheno_group = "BileAcid",
+         pheno_type = "BileAcid")
+```
+
+How many bile acids have `n` peaks?
+
+```{r}
+peaks_bile %>%
+  count(pheno) %>%
+  count(n)
+```
+
+```{r}
+table(peaks_bile$chr)
+```
+
+## Annotation
+
+```{r}
+(annot <- peaks_bile %>%
+  distinct(pheno, pheno_group, pheno_type) %>%
+  mutate(longname = pheno,
+         output = pheno))
+```
+
+```{r}
+bile <- read.delim(file.path(datapath, "otu",
+                         "phe_pBA_all.tsv"), sep = "\t")
+```
+
+```{r}
+saveRDS(peaks_bile, 
+        file = file.path(datapath, "otu", "peaks_BileAcid.rds"))
+```
+
+```{r}
+saveRDS(bile, file = file.path(datapath, "otu", "pheno_BileAcid.rds"))
+```
+
+```{r}
+analyses_otu <- inner_join(annot, analyses_otu, by = "pheno_group")
+```
+
+```{r}
+saveRDS(analyses_otu, file = file.path(datapath, "otu", "analyses_BileAcid.rds"))
+```
+

@@ -82,16 +82,37 @@ analyses_tbl %>%
 ## Peaks with 0 as NA
 
 ```{r}
+finegrain <- function(Order,Family,Genus,Species) {
+  ifelse(is.na(Species),
+         ifelse(is.na(Genus),
+                ifelse(is.na(Family),
+                       Order,
+                       ifelse(str_detect(Family, "[0-9]"),
+                              paste(Order, Family),
+                              Family)),
+                ifelse(str_detect(Genus, "[0-9]"),
+                       paste(Family, Genus),
+                       Genus)),
+         paste(Genus, Species))
+}
+```
+
+```{r}
 peaks_na <- read_tsv(file.path(datapath, "otu", 
                                "20170503_peaks_cr97_wNA_ra_wTaxonomy.tsv")) %>%
   mutate(chr = factor(chr, c(1:19,"X"))) %>%
   select(-lodindex) %>%
   rename(pheno = lodcolumn) %>%
-  mutate(pheno = paste0("n", pheno),
-         longname = paste0(pheno, " (", Order, ")"),
+  mutate(longname = paste0(pheno, " (", finegrain(Order,Family,Genus,Species), ")"),
+         pheno = paste0("n", pheno),
          output = pheno,
          pheno_group = "OTU_Closed_Ref",
          pheno_type = "OTU_NA")
+```
+
+```{r}
+peaks_na %>% select(pheno, longname) %>%
+  filter(str_detect(longname, "[0-9]"))
 ```
 
 ```{r}
@@ -106,9 +127,10 @@ peaks_na %>%
   group_by(Phylum) %>%
   summarize_all(n_distinct)
 ```
+
 ```{r}
 peaks_na %>%
-  count(Order)
+  count(Order,Family,Genus,Species)
 ```
 
 ```{r}
@@ -130,8 +152,8 @@ peaks_zero <- read_tsv(file.path(datapath, "otu",
   mutate(chr = factor(chr, c(1:19,"X"))) %>%
   select(-lodindex) %>%
   rename(pheno = lodcolumn) %>%
-  mutate(pheno = paste0("z", pheno),
-         longname = paste0(pheno, " (", Order, ")"),
+  mutate(longname = paste0(pheno, " (", finegrain(Order,Family,Genus,Species), ")"),
+         pheno = paste0("z", pheno),
          output = pheno,
          pheno_group = "OTU_Closed_Ref",
          pheno_type = "OTU_Zero")
@@ -149,9 +171,10 @@ peaks_zero %>%
   group_by(Phylum) %>%
   summarize_all(n_distinct)
 ```
+
 ```{r}
 peaks_zero %>%
-  count(Order)
+  count(Order,Family,Genus,Species)
 ```
 
 ```{r}
@@ -165,6 +188,18 @@ peaks_zero %>%
 table(peaks_zero$chr)
 ```
 
+## Peaks for binary
+
+Not done yet. For now, fake with `peaks_zero`.
+
+```{r}
+peaks_binary <- peaks_zero %>%
+  mutate(pheno = str_replace(pheno, "^z", "b"),
+         output = pheno,
+         pheno_group = "OTU_Closed_Ref",
+         pheno_type = "OTU_Bin")
+```
+
 
 ## Annotation
 
@@ -172,7 +207,7 @@ table(peaks_zero$chr)
 annot <- read_tsv(file.path(datapath, "otu",
                             "phe_otu_cr97_filter1010_taxonomy.tsv")) %>%
   rename(pheno = id) %>%
-  mutate(longname = paste0(pheno, " (", Order, ")"),
+  mutate(longname = paste0(pheno, " (", finegrain(Order,Family,Genus,Species), ")"),
          output = pheno,
          pheno_group = "OTU_Closed_Ref")
   
@@ -182,17 +217,14 @@ annot <- read_tsv(file.path(datapath, "otu",
 annot <- bind_rows(
   annot %>%
     mutate(pheno = paste0("z", pheno),
-           longname = paste0("z", longname),
            output = paste0("z", output),
            pheno_type = "OTU_Zero"),
   annot %>%
     mutate(pheno = paste0("n", pheno),
-           longname = paste0("n", longname),
            output = paste0("n", output),
            pheno_type = "OTU_NA"),
   annot %>%
     mutate(pheno = paste0("b", pheno),
-           longname = paste0("b", longname),
            output = paste0("b", output),
            pheno_type = "OTU_Bin"))
 ```
@@ -213,7 +245,8 @@ botu[botu > 0] <- 1
 **NOTE: What is missing is peaks for binary form data.**
 
 ```{r}
-saveRDS(bind_rows(peaks_na, peaks_zero), file = file.path(datapath, "otu", "peaks_OTU_CR.rds"))
+saveRDS(bind_rows(peaks_na, peaks_zero, peaks_binary), 
+        file = file.path(datapath, "otu", "peaks_OTU_CR.rds"))
 ```
 
 ```{r}
@@ -229,11 +262,12 @@ analyses_otu <- analyses_tbl %>%
 ```
 
 ```{r}
-analyses_otu <- inner_join(annot, analyses_otu, by = "pheno_group")
+analyses_otu <- inner_join(annot, analyses_otu, by = "pheno_group") %>%
+  mutate(transf = ifelse(pheno_type == "OTU_Bin", "identity", transf))
 ```
 
 ```{r}
-analyses_otu %>% select(pheno,longname,pheno_type) %>% filter(grepl("?otu45363", pheno))
+analyses_otu %>% select(pheno,longname,pheno_type,transf) %>% filter(grepl("?otu45363", pheno))
 ```
 
 ```{r}

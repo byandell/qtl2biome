@@ -21,6 +21,7 @@
 # produced vignettes
 vignettes/*.html
 vignettes/*.pdf
+*.html
 
 # OAuth2 token, see https://github.com/hadley/httr/releases/tag/v0.3
 .httr-oauth
@@ -33,3 +34,4 @@ vignettes/*.pdf
 *.utf8.md
 *.knit.md
 .Rproj.user
+*.rds
